@@ -3,13 +3,16 @@
 
 //! This module writes Flattened Devicetree blobs as defined here:
 //! <https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html>
+extern crate alloc;
 
-use std::cmp::{Ord, Ordering};
-use std::collections::{BTreeMap, HashSet};
-use std::convert::TryInto;
-use std::ffi::CString;
-use std::fmt;
-use std::mem::size_of_val;
+use alloc::collections::BTreeMap;
+use alloc::ffi::CString;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::cmp::{Ord, Ordering};
+use core::convert::TryInto;
+use core::fmt;
+use core::mem::size_of_val;
 
 use crate::{
     FDT_BEGIN_NODE, FDT_END, FDT_END_NODE, FDT_MAGIC, FDT_PROP, NODE_NAME_MAX_LEN,
@@ -75,10 +78,10 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 /// Result of a FDT writer operation.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 const FDT_HEADER_SIZE: usize = 40;
 const FDT_VERSION: u32 = 17;
@@ -99,7 +102,7 @@ pub struct FdtWriter {
     boot_cpuid_phys: u32,
     // The set is used to track the uniqueness of phandle values as required by the spec
     // https://devicetree-specification.readthedocs.io/en/stable/devicetree-basics.html#phandle
-    phandles: HashSet<u32>,
+    phandles: Vec<u32>,
 }
 
 /// Reserved physical memory region.
@@ -245,7 +248,7 @@ impl FdtWriter {
     ///
     /// `mem_reservations` - reserved physical memory regions to list in the FDT header.
     pub fn new_with_mem_reserv(mem_reservations: &[FdtReserveEntry]) -> Result<Self> {
-        let data = vec![0u8; FDT_HEADER_SIZE]; // Reserve space for header.
+        let data = alloc::vec![0u8; FDT_HEADER_SIZE]; // Reserve space for header.
 
         let mut fdt = FdtWriter {
             data,
@@ -256,7 +259,7 @@ impl FdtWriter {
             node_depth: 0,
             node_ended: false,
             boot_cpuid_phys: 0,
-            phandles: HashSet::new(),
+            phandles: Vec::new(),
         };
 
         fdt.align(8);
@@ -308,7 +311,7 @@ impl FdtWriter {
 
     // Append `num_bytes` padding bytes (0x00).
     fn pad(&mut self, num_bytes: usize) {
-        self.data.extend(std::iter::repeat(0).take(num_bytes));
+        self.data.extend(core::iter::repeat(0).take(num_bytes));
     }
 
     // Append padding bytes (0x00) until the length of data is a multiple of `alignment`.
@@ -485,9 +488,10 @@ impl FdtWriter {
     /// property. The value is checked for uniqueness within the FDT. In the case of a duplicate
     /// [`Error::DuplicatePhandle`] is returned.
     pub fn property_phandle(&mut self, val: u32) -> Result<()> {
-        if !self.phandles.insert(val) {
+        if self.phandles.contains(&val) {
             return Err(Error::DuplicatePhandle);
         }
+        self.phandles.push(val);
         self.property("phandle", &val.to_be_bytes())
     }
 
@@ -557,7 +561,7 @@ mod tests {
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x48, // 0004: totalsize (0x48)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -590,7 +594,7 @@ mod tests {
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x68, // 0004: totalsize (0x68)
             0x00, 0x00, 0x00, 0x58, // 0008: off_dt_struct (0x58)
@@ -628,7 +632,7 @@ mod tests {
         fdt.property_null("null").unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x59, // 0004: totalsize (0x59)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -662,7 +666,7 @@ mod tests {
         fdt.property_u32("u32", 0x12345678).unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x5c, // 0004: totalsize (0x5C)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -698,7 +702,7 @@ mod tests {
         fdt.property_u32("u32", 0x12345678).unwrap();
         fdt.property_u64("u64", 0x1234567887654321).unwrap();
         fdt.property_string("str", "hello").unwrap();
-        fdt.property_string_list("strlst", vec!["hi".into(), "bye".into()])
+        fdt.property_string_list("strlst", alloc::vec!["hi".into(), "bye".into()])
             .unwrap();
         fdt.property_array_u32("arru32", &[0x12345678, 0xAABBCCDD])
             .unwrap();
@@ -706,7 +710,7 @@ mod tests {
             .unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0xee, // 0004: totalsize (0xEE)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -796,7 +800,7 @@ mod tests {
         fdt.end_node(nested_node).unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x80, // 0004: totalsize (0x80)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -844,7 +848,7 @@ mod tests {
         fdt.end_node(nested_node).unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x90, // 0004: totalsize (0x90)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -892,7 +896,7 @@ mod tests {
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         let actual_fdt = fdt.finish().unwrap();
-        let expected_fdt = vec![
+        let expected_fdt = alloc::vec![
             0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
             0x00, 0x00, 0x00, 0x48, // 0004: totalsize (0x48)
             0x00, 0x00, 0x00, 0x38, // 0008: off_dt_struct (0x38)
@@ -948,7 +952,7 @@ mod tests {
     #[test]
     fn invalid_prop_string_list_value_nul() {
         let mut fdt = FdtWriter::new().unwrap();
-        let strs = vec!["test".into(), "abc\0def".into()];
+        let strs = alloc::vec!["test".into(), "abc\0def".into()];
         assert_eq!(
             fdt.property_string_list("mystr", strs).unwrap_err(),
             Error::InvalidString
